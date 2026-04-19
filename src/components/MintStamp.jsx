@@ -1,20 +1,27 @@
 import { useState } from "react";
 import { getStampNFTContractWithSigner } from "../utils/contracts";
+import { uploadToIPFS } from "../utils/ipfs";
 
 export default function MintStamp({ account, onMinted }) {
   const [form, setForm] = useState({
     name: "",
     description: "",
-    imageURI: "",
     rarity: "Common",
     origin: "",
     royaltyPercentage: "500",
   });
+  const [imageFile, setImageFile] = useState(null);
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(false);
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
+  };
+
+  const handleFileChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      setImageFile(e.target.files[0]);
+    }
   };
 
   const handleMint = async (e) => {
@@ -23,12 +30,21 @@ export default function MintStamp({ account, onMinted }) {
     setStatus(null);
 
     try {
+      let finalImageURI = "";
+      if (imageFile) {
+        setStatus({ type: "loading", message: "⏳ Uploading image to IPFS via Pinata..." });
+        finalImageURI = await uploadToIPFS(imageFile);
+      } else {
+        throw new Error("Please select an image file.");
+      }
+
+      setStatus({ type: "loading", message: "⏳ Please confirm transaction in MetaMask..." });
       const contract = await getStampNFTContractWithSigner();
       const tx = await contract.mintStamp(
         account,
         form.name,
         form.description,
-        form.imageURI,
+        finalImageURI,
         form.rarity,
         form.origin,
         parseInt(form.royaltyPercentage)
@@ -52,11 +68,13 @@ export default function MintStamp({ account, onMinted }) {
       setForm({
         name: "",
         description: "",
-        imageURI: "",
         rarity: "Common",
         origin: "",
         royaltyPercentage: "500",
       });
+      setImageFile(null);
+      const fileInput = document.getElementById("mint-image");
+      if (fileInput) fileInput.value = "";
 
       if (onMinted) onMinted();
     } catch (err) {
@@ -114,17 +132,20 @@ export default function MintStamp({ account, onMinted }) {
           </div>
 
           <div className="form-group">
-            <label className="form-label" htmlFor="mint-image">Image URI</label>
+            <label className="form-label" htmlFor="mint-image">Stamp Image</label>
             <input
               id="mint-image"
               className="form-input"
-              type="text"
-              name="imageURI"
-              placeholder="ipfs://... or https://..."
-              value={form.imageURI}
-              onChange={handleChange}
+              type="file"
+              accept="image/*"
+              onChange={handleFileChange}
               required
             />
+            {imageFile && (
+              <div style={{ marginTop: "10px", fontSize: "12px", color: "var(--accent-primary-light)" }}>
+                Selected: {imageFile.name}
+              </div>
+            )}
           </div>
 
           <div className="form-row">
