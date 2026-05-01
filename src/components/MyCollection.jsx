@@ -7,6 +7,7 @@ import {
   getMarketplaceContractWithSigner,
   MARKETPLACE_ADDRESS,
 } from "../utils/contracts";
+import { resolveNFTImage } from "../utils/ipfs";
 
 export default function MyCollection({ account, refreshKey, onRefresh }) {
   const [stamps, setStamps] = useState([]);
@@ -38,6 +39,7 @@ export default function MyCollection({ account, refreshKey, onRefresh }) {
           name: metadata.name,
           description: metadata.description,
           imageURI: metadata.imageURI,
+          imageURL: await resolveNFTImage(metadata.imageURI), // resolved HTTP URL
           rarity: metadata.rarity,
           origin: metadata.origin,
           isListed: listing.active,
@@ -179,9 +181,9 @@ export default function MyCollection({ account, refreshKey, onRefresh }) {
           {stamps.map((stamp) => (
             <div className="card" key={stamp.tokenId}>
               <div className="card-image">
-                {stamp.imageURI && (stamp.imageURI.startsWith("http") || stamp.imageURI.startsWith("ipfs")) ? (
+                {stamp.imageURL ? (
                   <img
-                    src={stamp.imageURI.replace("ipfs://", "https://ipfs.io/ipfs/")}
+                    src={stamp.imageURL}
                     alt={stamp.name}
                     onError={(e) => { e.target.style.display = "none"; e.target.parentNode.textContent = getStampEmoji(stamp.rarity); }}
                   />

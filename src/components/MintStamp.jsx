@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { getStampNFTContractWithSigner } from "../utils/contracts";
-import { uploadToIPFS } from "../utils/ipfs";
+import { uploadToIPFS, uploadMetadataToIPFS } from "../utils/ipfs";
 import { generateStampImage, generateStampDescription, analyzeStampRarity } from "../utils/huggingface";
 
 export default function MintStamp({ account, onMinted }) {
@@ -82,21 +82,33 @@ export default function MintStamp({ account, onMinted }) {
     setStatus(null);
 
     try {
-      let finalImageURI = "";
-      if (imageFile) {
-        setStatus({ type: "loading", message: "⏳ Uploading image to IPFS via Pinata..." });
-        finalImageURI = await uploadToIPFS(imageFile);
-      } else {
+      if (!imageFile) {
         throw new Error("Please select an image file.");
       }
 
+      // Step 1: Upload the image file to IPFS
+      setStatus({ type: "loading", message: "⏳ Uploading image to IPFS via Pinata..." });
+      const imageURI = await uploadToIPFS(imageFile);
+
+      // Step 2: Upload ERC-721 metadata JSON to IPFS
+      // MetaMask reads this JSON to show the NFT image & attributes
+      setStatus({ type: "loading", message: "⏳ Uploading metadata to IPFS..." });
+      const metadataURI = await uploadMetadataToIPFS({
+        imageURI,
+        name: form.name,
+        description: form.description,
+        rarity: form.rarity,
+        origin: form.origin,
+      });
+
+      // Step 3: Mint — tokenURI points to metadata JSON, not the raw image
       setStatus({ type: "loading", message: "⏳ Please confirm transaction in MetaMask..." });
       const contract = await getStampNFTContractWithSigner();
       const tx = await contract.mintStamp(
         account,
         form.name,
         form.description,
-        finalImageURI,
+        metadataURI,        // ← metadata JSON URI (ERC-721 standard)
         form.rarity,
         form.origin,
         parseInt(form.royaltyPercentage)
