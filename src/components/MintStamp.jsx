@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { getStampNFTContractWithSigner } from "../utils/contracts";
 import { uploadToIPFS } from "../utils/ipfs";
+import { generateStampImage, generateStampDescription, analyzeStampRarity } from "../utils/huggingface";
 
 export default function MintStamp({ account, onMinted }) {
   const [form, setForm] = useState({
@@ -13,6 +14,9 @@ export default function MintStamp({ account, onMinted }) {
   const [imageFile, setImageFile] = useState(null);
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [aiLoading, setAiLoading] = useState({ image: false, desc: false, rarity: false });
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [imagePreview, setImagePreview] = useState(null);
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -20,7 +24,55 @@ export default function MintStamp({ account, onMinted }) {
 
   const handleFileChange = (e) => {
     if (e.target.files && e.target.files[0]) {
-      setImageFile(e.target.files[0]);
+      const file = e.target.files[0];
+      setImageFile(file);
+      setImagePreview(URL.createObjectURL(file));
+    }
+  };
+
+  const handleGenerateImage = async () => {
+    if (!aiPrompt) return setStatus({ type: "error", message: "Please enter an image prompt." });
+    setAiLoading(prev => ({ ...prev, image: true }));
+    setStatus({ type: "loading", message: "🎨 AI is generating your stamp... (this may take 10-15s)" });
+    try {
+      const file = await generateStampImage(aiPrompt);
+      setImageFile(file);
+      setImagePreview(URL.createObjectURL(file));
+      setStatus({ type: "success", message: "✅ AI Image generated successfully!" });
+    } catch (err) {
+      setStatus({ type: "error", message: err.message });
+    } finally {
+      setAiLoading(prev => ({ ...prev, image: false }));
+    }
+  };
+
+  const handleGenerateDesc = async () => {
+    if (!form.name || !form.origin) return setStatus({ type: "error", message: "Please enter a Name and Origin first." });
+    setAiLoading(prev => ({ ...prev, desc: true }));
+    setStatus({ type: "loading", message: "✍️ AI Historian is researching..." });
+    try {
+      const desc = await generateStampDescription(form.name, form.origin);
+      setForm(prev => ({ ...prev, description: desc }));
+      setStatus({ type: "success", message: "✅ AI Description generated!" });
+    } catch (err) {
+      setStatus({ type: "error", message: err.message });
+    } finally {
+      setAiLoading(prev => ({ ...prev, desc: false }));
+    }
+  };
+
+  const handleAnalyzeRarity = async () => {
+    if (!form.name || !form.origin) return setStatus({ type: "error", message: "Please enter a Name and Origin first." });
+    setAiLoading(prev => ({ ...prev, rarity: true }));
+    setStatus({ type: "loading", message: "🔍 AI is analyzing rarity..." });
+    try {
+      const rarity = await analyzeStampRarity(form.name, form.origin);
+      setForm(prev => ({ ...prev, rarity }));
+      setStatus({ type: "success", message: `✅ AI classified this stamp as: ${rarity}!` });
+    } catch (err) {
+      setStatus({ type: "error", message: err.message });
+    } finally {
+      setAiLoading(prev => ({ ...prev, rarity: false }));
     }
   };
 
@@ -73,6 +125,7 @@ export default function MintStamp({ account, onMinted }) {
         royaltyPercentage: "500",
       });
       setImageFile(null);
+      setImagePreview(null);
       const fileInput = document.getElementById("mint-image");
       if (fileInput) fileInput.value = "";
 
@@ -119,7 +172,18 @@ export default function MintStamp({ account, onMinted }) {
           </div>
 
           <div className="form-group">
-            <label className="form-label" htmlFor="mint-description">Description</label>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+              <label className="form-label" htmlFor="mint-description" style={{ margin: 0 }}>Description</label>
+              <button 
+                type="button" 
+                className="btn btn-secondary" 
+                style={{ padding: "4px 8px", fontSize: "12px" }} 
+                onClick={handleGenerateDesc}
+                disabled={aiLoading.desc}
+              >
+                {aiLoading.desc ? "✍️ Generating..." : "🪄 Auto-write"}
+              </button>
+            </div>
             <textarea
               id="mint-description"
               className="form-textarea"
@@ -133,24 +197,58 @@ export default function MintStamp({ account, onMinted }) {
 
           <div className="form-group">
             <label className="form-label" htmlFor="mint-image">Stamp Image</label>
+            
+            <div style={{ display: "flex", gap: "10px", marginBottom: "10px" }}>
+              <input
+                className="form-input"
+                type="text"
+                placeholder="AI Prompt: A vintage cat stamp..."
+                value={aiPrompt}
+                onChange={(e) => setAiPrompt(e.target.value)}
+              />
+              <button 
+                type="button" 
+                className="btn btn-secondary"
+                onClick={handleGenerateImage}
+                disabled={aiLoading.image || !aiPrompt}
+              >
+                {aiLoading.image ? "🎨..." : "✨ Generate AI"}
+              </button>
+            </div>
+
             <input
               id="mint-image"
               className="form-input"
               type="file"
               accept="image/*"
               onChange={handleFileChange}
-              required
             />
-            {imageFile && (
-              <div style={{ marginTop: "10px", fontSize: "12px", color: "var(--accent-primary-light)" }}>
-                Selected: {imageFile.name}
+            {imagePreview && (
+              <div style={{ marginTop: "15px", textAlign: "center" }}>
+                <p style={{ fontSize: "12px", color: "var(--accent-primary-light)", marginBottom: "5px" }}>Image Preview:</p>
+                <img 
+                  src={imagePreview} 
+                  alt="Stamp Preview" 
+                  style={{ maxWidth: "200px", borderRadius: "8px", border: "2px solid var(--accent-primary)" }} 
+                />
               </div>
             )}
           </div>
 
           <div className="form-row">
             <div className="form-group">
-              <label className="form-label" htmlFor="mint-rarity">Rarity</label>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                <label className="form-label" htmlFor="mint-rarity" style={{ margin: 0 }}>Rarity</label>
+                <button 
+                  type="button" 
+                  className="btn btn-secondary" 
+                  style={{ padding: "4px 8px", fontSize: "12px" }} 
+                  onClick={handleAnalyzeRarity}
+                  disabled={aiLoading.rarity}
+                >
+                  {aiLoading.rarity ? "🔍..." : "🤖 Analyze"}
+                </button>
+              </div>
               <select
                 id="mint-rarity"
                 className="form-select"
